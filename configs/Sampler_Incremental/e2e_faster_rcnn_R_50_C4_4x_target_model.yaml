@@ -1,0 +1,53 @@
+MODEL:
+  META_ARCHITECTURE: "GeneralizedRCNN"
+  WEIGHT: "/media/cgz/新加卷/HYH/FWQ_file/Weight/Defect_Sampler_Incremental/incremental_30/model_0007500.pth"
+#  WEIGHT: "/home/cgz/XWJ/CL/MMA-main/weight/output/defect_5_4_l2_withdecouplefd5-4/MMA/STEP1/model_last.pth"
+  SOURCE_WEIGHT: "/media/cgz/新加卷/HYH/FWQ_file/Weight/Defect_Sampler_Incremental/source_70/model_final.pth"
+  BACKBONE:
+    CONV_BODY: "R-50-C4"
+  RESNETS:
+    BACKBONE_OUT_CHANNELS: 1024
+  RPN:
+    USE_FPN: False
+    ANCHOR_STRIDE: (16,)
+    PRE_NMS_TOP_N_TRAIN: 12000
+    PRE_NMS_TOP_N_TEST: 6000
+    POST_NMS_TOP_N_TRAIN: 2000
+    POST_NMS_TOP_N_TEST: 1000
+  ROI_HEADS:
+    USE_FPN: False
+  ROI_BOX_HEAD:
+    POOLER_RESOLUTION: 7
+    POOLER_SCALES: (0.0625,)
+    POOLER_SAMPLING_RATIO: 0
+    FEATURE_EXTRACTOR: "ResNet50Conv5ROIFeatureExtractor"
+    PREDICTOR: "FastRCNNPredictor"
+    NUM_CLASSES: 6 # total classes : 20 + 1
+#    NAME_OLD_CLASSES: ["Z1", "Z2", "Z3","Z4","C3"]
+#    NAME_NEW_CLASSES: ["C4","F2","G1","J3"]
+#    NAME_EXCLUDED_CLASSES: []
+    NAME_OLD_CLASSES: [ ]
+    NAME_NEW_CLASSES: [ "Z1", "Z2", "Z3","Z4","C3" ]
+    NAME_EXCLUDED_CLASSES: [ "C4","F2","G1","J3" ]
+DATASETS:
+  TRAIN: ("Sampler_train_30",)
+  TEST: ("defect_test",)
+DATALOADER:
+  SIZE_DIVISIBILITY: 0
+SOLVER:
+  BASE_LR: 0.0004 # start learning rate
+
+  WEIGHT_DECAY: 0.0001
+  GAMMA: 0.1  # learning rate decay
+  STEPS: (7500,)
+  MAX_ITER: 10000 #2500  # number of iteration
+  CHECKPOINT_PERIOD: 2500 # number of iteration to generate check point
+  IMS_PER_BATCH: 4 # number of images per batch
+  MOMENTUM: 0.9
+TEST: # testing strategy
+  IMS_PER_BATCH: 8 # number of images per batch
+
+#NAME: 10-10_LR005_BS4_ROI
+OUTPUT_DIR: "/media/cgz/新加卷/HYH/FWQ_file/Weight/Defect_Sampler_Incremental/incremental_30" # path to store the result
+TENSORBOARD_DIR: "output/" # path to store tensorboard info
+#DTYPE: "float16"

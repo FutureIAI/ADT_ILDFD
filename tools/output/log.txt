@@ -1,0 +1,491 @@
+2022-11-22 09:46:45,653 maskrcnn_benchmark INFO: Using 1 GPUs
+2022-11-22 09:46:45,654 maskrcnn_benchmark INFO: Namespace(config_file='/home/cgz/XWJ/CL/MMA-main/tools/train_first_step.py', local_rank=0, opts=[], skip_test=False)
+2022-11-22 09:46:45,654 maskrcnn_benchmark INFO: Collecting env info (might take some time)
+2022-11-22 09:46:48,120 maskrcnn_benchmark INFO: 
+PyTorch version: 1.7.0
+Is debug build: True
+CUDA used to build PyTorch: 11.0
+ROCM used to build PyTorch: N/A
+
+OS: Ubuntu 16.04.7 LTS (x86_64)
+GCC version: (Ubuntu 5.4.0-6ubuntu1~16.04.12) 5.4.0 20160609
+Clang version: Could not collect
+CMake version: version 3.5.1
+
+Python version: 3.8 (64-bit runtime)
+Is CUDA available: True
+CUDA runtime version: Could not collect
+GPU models and configuration: GPU 0: GeForce RTX 3090
+Nvidia driver version: 455.45.01
+cuDNN version: Probably one of the following:
+/usr/local/cuda-11.0/targets/x86_64-linux/lib/libcudnn.so.8
+/usr/local/cuda-11.0/targets/x86_64-linux/lib/libcudnn_adv_infer.so.8
+/usr/local/cuda-11.0/targets/x86_64-linux/lib/libcudnn_adv_train.so.8
+/usr/local/cuda-11.0/targets/x86_64-linux/lib/libcudnn_cnn_infer.so.8
+/usr/local/cuda-11.0/targets/x86_64-linux/lib/libcudnn_cnn_train.so.8
+/usr/local/cuda-11.0/targets/x86_64-linux/lib/libcudnn_ops_infer.so.8
+/usr/local/cuda-11.0/targets/x86_64-linux/lib/libcudnn_ops_train.so.8
+/usr/local/cuda-11.1/targets/x86_64-linux/lib/libcudnn.so.8.0.5
+/usr/local/cuda-11.1/targets/x86_64-linux/lib/libcudnn_adv_infer.so.8.0.5
+/usr/local/cuda-11.1/targets/x86_64-linux/lib/libcudnn_adv_train.so.8.0.5
+/usr/local/cuda-11.1/targets/x86_64-linux/lib/libcudnn_cnn_infer.so.8.0.5
+/usr/local/cuda-11.1/targets/x86_64-linux/lib/libcudnn_cnn_train.so.8.0.5
+/usr/local/cuda-11.1/targets/x86_64-linux/lib/libcudnn_ops_infer.so.8.0.5
+/usr/local/cuda-11.1/targets/x86_64-linux/lib/libcudnn_ops_train.so.8.0.5
+HIP runtime version: N/A
+MIOpen runtime version: N/A
+
+Versions of relevant libraries:
+[pip3] numpy==1.23.3
+[pip3] torch==1.7.0
+[pip3] torchaudio==0.7.0a0+ac17b64
+[pip3] torchvision==0.8.0
+[conda] blas                      1.0                         mkl    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
+[conda] cudatoolkit               11.0.221             h6bb024c_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+[conda] mkl                       2021.4.0           h06a4308_640    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+[conda] mkl-service               2.4.0            py38h7f8727e_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+[conda] mkl_fft                   1.3.1            py38hd3c417c_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+[conda] mkl_random                1.2.2            py38h51133e4_0    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+[conda] numpy                     1.23.3           py38h14f4228_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+[conda] numpy-base                1.23.3           py38h31eccc5_1    https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+[conda] pytorch                   1.7.0           py3.8_cuda11.0.221_cudnn8.0.3_0    pytorch
+[conda] torchaudio                0.7.0                      py38    pytorch
+[conda] torchvision               0.8.0                py38_cu110    pytorch
+        Pillow (9.2.0)
+2022-11-22 09:46:48,121 maskrcnn_benchmark INFO: Loaded configuration file /home/cgz/XWJ/CL/MMA-main/tools/train_first_step.py
+2022-11-22 09:46:48,121 maskrcnn_benchmark INFO: 
+# Set up custom environment before nearly anything else is imported
+# NOTE: this should be the first import (no not reorder)
+from maskrcnn_benchmark.utils.env import setup_environment  # noqa F401 isort:skip
+
+import argparse
+import os
+
+import timeit
+import torch
+from maskrcnn_benchmark.config import cfg  # import default model configuration: config/defaults.py, config/paths_catalog.py, yaml file
+from maskrcnn_benchmark.data import make_data_loader  # import dataset
+from maskrcnn_benchmark.solver import make_lr_scheduler  # learning rate updating strategy
+from maskrcnn_benchmark.solver import make_optimizer  # setting the optimizer
+from maskrcnn_benchmark.engine.inference import inference  # inference
+from maskrcnn_benchmark.engine.trainer import do_train  # main logic of model training
+from maskrcnn_benchmark.modeling.detector import build_detection_model  # used to create model
+from maskrcnn_benchmark.utils.checkpoint import DetectronCheckpointer
+from maskrcnn_benchmark.utils.collect_env import collect_env_info
+from maskrcnn_benchmark.utils.comm import synchronize, get_rank, get_world_size  # related to multi-gpu training; when usong 1 gpu, get_rank() will return 0
+from maskrcnn_benchmark.utils.imports import import_file
+from maskrcnn_benchmark.utils.logger import setup_logger  # related to logging model(output training status)
+from maskrcnn_benchmark.utils.miscellaneous import mkdir  # related to folder creation
+from torch.utils.tensorboard import SummaryWriter
+
+# See if we can use apex.DistributedDataParallel instead of the torch default,
+# and enable mixed-precision via apex.amp
+try:
+    from apex import amp
+except ImportError:
+    raise ImportError('Use APEX for multi-precision via apex.amp')
+
+def train(cfg, local_rank, distributed):
+    # this command called ./maskrcnn_benchmark/modeling/detector/build_detection_model() function
+    # this function is used to create the target model structure according to the setting within input yaml file
+    # this function will return the desired structure modelnohup python -m torch.distributed.launch --nproc_per_node=4 train_first_step.py &
+    model = build_detection_model(cfg)
+
+    # default is "cuda"
+    device = torch.device(cfg.MODEL.DEVICE)
+    # move the model to device
+    model.to(device)
+
+    # make_optimizer() function capsulate torch.optiom.SGD() function,
+    # according to tensor's required_grad properties to generate parameter updating tabel
+    optimizer = make_optimizer(cfg, model)
+
+    # according to configuration within yaml file sets the learning rate updating strategy
+    scheduler = make_lr_scheduler(cfg, optimizer)
+
+    # Initialize mixed-precision training
+    use_mixed_precision = cfg.DTYPE == "float16"
+    print(cfg.DTYPE)
+    amp_opt_level = 'O1' if use_mixed_precision else 'O0'
+    model, optimizer = amp.initialize(model, optimizer, opt_level=amp_opt_level)
+
+    # if multiple gpus are used, parallel processing data
+    if distributed:
+        model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[local_rank], output_device=local_rank,
+            # this should be removed if we update BatchNorm stats
+            # broadcast_buffers=False
+        )
+
+    # create a parameter dictionary and initialize the iteration number to 0
+    arguments = {}
+    arguments["iteration"] = 0
+
+    # path to store the trained parameter value
+    output_dir = cfg.OUTPUT_DIR
+
+    # when only use 1 gpu, get_rank() returns 0
+    save_to_disk = get_rank() == 0
+
+    # create check pointer
+    checkpointer = DetectronCheckpointer(cfg, model, optimizer, scheduler, output_dir, save_to_disk)
+
+    # load the pre-trained model parameter to current model
+    extra_checkpoint_data = checkpointer.load(cfg.MODEL.WEIGHT)
+
+    # dict updating method to update the parameter dictionary
+    arguments.update(extra_checkpoint_data)
+
+    # load training data
+    # type of data_loader is list, type of its inside elements is torch.utils.data.DataLoader
+    # When is_train=True, make sure cfg.DATASETS.TRAIN is a list
+    # it has to point to one or multiple annotation files
+    data_loader = make_data_loader(
+        cfg,
+        is_train=True,
+        is_distributed=distributed,  # whether using multiple gpus to train
+        start_iter=arguments["iteration"],
+        num_gpus=get_world_size(),
+        rank=get_rank()
+    )
+
+    checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD  # number of iteration to store parameter value in pth file
+
+    # train the model: call function ./maskrcnn_benchmark/engine/trainer.py do_train() function
+    do_train(
+        model,
+        data_loader,
+        optimizer,
+        scheduler,
+        checkpointer,
+        device,
+        checkpoint_period,
+        arguments,
+    )
+
+    return model
+
+
+def run_test(cfg):
+    if get_rank() != 0:
+        return
+    model = build_detection_model(cfg)
+    model.to(cfg.MODEL.DEVICE)
+
+    output_dir = cfg.OUTPUT_DIR
+    checkpointer = DetectronCheckpointer(cfg, model, save_dir=output_dir)
+    _ = checkpointer.load(cfg.MODEL.WEIGHT)
+
+    iou_types = ("bbox",)
+    if cfg.MODEL.MASK_ON:
+        iou_types = iou_types + ("segm",)
+    if cfg.MODEL.KEYPOINT_ON:
+        iou_types = iou_types + ("keypoints",)
+    output_folders = [None] * len(cfg.DATASETS.TEST)
+    dataset_names = cfg.DATASETS.TEST
+    if cfg.OUTPUT_DIR:
+        for idx, dataset_name in enumerate(dataset_names):
+            output_folder = os.path.join(cfg.OUTPUT_DIR, "inference", dataset_name)
+            mkdir(output_folder)
+            output_folders[idx] = output_folder
+    data_loaders_val = make_data_loader(cfg, is_train=False, is_distributed=False)
+    summary_writer = SummaryWriter(log_dir=cfg.TENSORBOARD_DIR)
+    for output_folder, dataset_name, data_loader_val in zip(output_folders, dataset_names, data_loaders_val):
+        inference(
+            model,
+            data_loader_val,
+            dataset_name=dataset_name,
+            iou_types=iou_types,
+            box_only=False if cfg.MODEL.RETINANET_ON else cfg.MODEL.RPN_ONLY,
+            device=cfg.MODEL.DEVICE,
+            expected_results=cfg.TEST.EXPECTED_RESULTS,
+            expected_results_sigma_tol=cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
+            output_folder=output_folder,
+            alphabetical_order=cfg.TEST.COCO_ALPHABETICAL_ORDER,
+            summary_writer=summary_writer
+        )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="PyTorch Object Detection Training")
+    parser.add_argument(
+        "-c", "--config_file",
+        default="../configs/e2e_faster_rcnn_R_50_C4_1x.yaml",
+        metavar="FILE", 
+        help="path to config file",
+        type=str,
+    )
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=0
+    )
+    parser.add_argument(
+        "--skip-test",
+        dest="skip_test",
+        help="Do not test the final model",
+        action="store_true",
+    )
+    parser.add_argument(
+        "opts",
+        help="Modify config options using the command-line",
+        default=None,
+        nargs=argparse.REMAINDER,
+    )
+
+    args = parser.parse_args()
+
+    # if there is more than 1 gpu, set initialization for distribute training
+    torch.cuda.set_device(args.local_rank)
+    torch.distributed.init_process_group(
+        backend="nccl", init_method="env://"
+    )
+    synchronize()
+    num_gpus = get_world_size()
+    print("I'm using ", num_gpus, " gpus!")
+
+    cfg.merge_from_file(args.config_file)
+    cfg.merge_from_list(args.opts)
+    cfg.freeze()
+
+    output_dir = cfg.OUTPUT_DIR
+    if output_dir:
+        mkdir(output_dir)
+
+    logger = setup_logger("maskrcnn_benchmark", output_dir, get_rank())
+    logger.info("Using {} GPUs".format(num_gpus))
+    logger.info(args)
+
+    logger.info("Collecting env info (might take some time)")
+    logger.info("\n" + collect_env_info())
+
+    logger.info("Loaded configuration file {}".format(args.config_file))
+
+    # open and read the input yaml file, store it on config_str and display on the screen
+    with open(args.config_file, "r") as cf:
+        config_str = "\n" + cf.read()
+        logger.info(config_str)
+    logger.info("Running with config:\n{}".format(cfg))
+
+    # strat to train the model
+    model = train(cfg, args.local_rank, True)
+
+    if not args.skip_test:
+        # start to test the trained model
+        run_test(cfg)
+
+if __name__ == "__main__":
+    main()
+
+
+2022-11-22 09:46:48,122 maskrcnn_benchmark INFO: Running with config:
+AMP_VERBOSE: False
+CLS_PER_STEP: -1
+DATALOADER:
+  ASPECT_RATIO_GROUPING: True
+  NUM_WORKERS: 4
+  SIZE_DIVISIBILITY: 0
+DATASETS:
+  TEST: ()
+  TRAIN: ()
+DIST:
+  ATT: False
+  CLS: 0.0
+  FEAT: False
+  ROI_ALIGN: False
+  RPN: False
+  TYPE: l2
+DTYPE: float32
+INCREMENTAL: False
+INPUT:
+  BRIGHTNESS: 0.0
+  CONTRAST: 0.0
+  FLIP_PROB_TRAIN: 0.5
+  HUE: 0.0
+  MAX_SIZE_TEST: 1333
+  MAX_SIZE_TRAIN: 1333
+  MIN_SIZE_TEST: 800
+  MIN_SIZE_TRAIN: (800,)
+  PIXEL_MEAN: [102.9801, 115.9465, 122.7717]
+  PIXEL_STD: [1.0, 1.0, 1.0]
+  SATURATION: 0.0
+  TO_BGR255: True
+MODEL:
+  BACKBONE:
+    ALL_FREEZE: False
+    CONV_BODY: R-50-C4
+    FPN_FREEZE: False
+    FREEZE_CONV_BODY_AT: 2
+    USE_GN: False
+  CLS_AGNOSTIC_BBOX_REG: False
+  DEVICE: cuda
+  FBNET:
+    ARCH: default
+    ARCH_DEF: 
+    BN_TYPE: bn
+    DET_HEAD_BLOCKS: []
+    DET_HEAD_LAST_SCALE: 1.0
+    DET_HEAD_STRIDE: 0
+    DW_CONV_SKIP_BN: True
+    DW_CONV_SKIP_RELU: True
+    KPTS_HEAD_BLOCKS: []
+    KPTS_HEAD_LAST_SCALE: 0.0
+    KPTS_HEAD_STRIDE: 0
+    MASK_HEAD_BLOCKS: []
+    MASK_HEAD_LAST_SCALE: 0.0
+    MASK_HEAD_STRIDE: 0
+    RPN_BN_TYPE: 
+    RPN_HEAD_BLOCKS: 0
+    SCALE_FACTOR: 1.0
+    WIDTH_DIVISOR: 1
+  FPN:
+    USE_GN: False
+    USE_RELU: False
+  GROUP_NORM:
+    DIM_PER_GP: -1
+    EPSILON: 1e-05
+    NUM_GROUPS: 32
+  KEYPOINT_ON: False
+  MASK_ON: False
+  META_ARCHITECTURE: GeneralizedRCNN
+  RESNETS:
+    BACKBONE_OUT_CHANNELS: 1024
+    DEFORMABLE_GROUPS: 1
+    NUM_GROUPS: 1
+    RES2_OUT_CHANNELS: 256
+    RES5_DILATION: 1
+    STAGE_WITH_DCN: (False, False, False, False)
+    STEM_FUNC: StemWithFixedBatchNorm
+    STEM_OUT_CHANNELS: 64
+    STRIDE_IN_1X1: True
+    TRANS_FUNC: BottleneckWithFixedBatchNorm
+    WIDTH_PER_GROUP: 64
+    WITH_MODULATED_DCN: False
+  RETINANET:
+    ANCHOR_SIZES: (32, 64, 128, 256, 512)
+    ANCHOR_STRIDES: (8, 16, 32, 64, 128)
+    ASPECT_RATIOS: (0.5, 1.0, 2.0)
+    BBOX_REG_BETA: 0.11
+    BBOX_REG_WEIGHT: 4.0
+    BG_IOU_THRESHOLD: 0.4
+    FG_IOU_THRESHOLD: 0.5
+    INFERENCE_TH: 0.05
+    LOSS_ALPHA: 0.25
+    LOSS_GAMMA: 2.0
+    NMS_TH: 0.4
+    NUM_CLASSES: 81
+    NUM_CONVS: 4
+    OCTAVE: 2.0
+    PRE_NMS_TOP_N: 1000
+    PRIOR_PROB: 0.01
+    SCALES_PER_OCTAVE: 3
+    STRADDLE_THRESH: 0
+    USE_C5: True
+  RETINANET_ON: False
+  ROI_BOX_HEAD:
+    CONV_HEAD_DIM: 256
+    DILATION: 1
+    FEATURE_EXTRACTOR: ResNet50Conv5ROIFeatureExtractor
+    MLP_HEAD_DIM: 1024
+    NAME_EXCLUDED_CLASSES: []
+    NAME_NEW_CLASSES: []
+    NAME_OLD_CLASSES: []
+    NUM_CLASSES: 21
+    NUM_STACKED_CONVS: 4
+    POOLER_RESOLUTION: 14
+    POOLER_SAMPLING_RATIO: 0
+    POOLER_SCALES: (0.0625,)
+    PREDICTOR: FastRCNNPredictor
+    USE_GN: False
+  ROI_HEADS:
+    BATCH_SIZE_PER_IMAGE: 512
+    BBOX_REG_WEIGHTS: (10.0, 10.0, 5.0, 5.0)
+    BBS_FREEZE: False
+    BBS_OFFSET: False
+    BG_IOU_THRESHOLD: 0.5
+    CLS_FREEZE: False
+    CLS_OFFSET: False
+    DETECTIONS_PER_IMG: 100
+    FC_FREEZE: False
+    FG_IOU_THRESHOLD: 0.5
+    NMS: 0.5
+    POSITIVE_FRACTION: 0.25
+    SCORE_THRESH: 0.05
+    USE_FPN: False
+  ROI_KEYPOINT_HEAD:
+    CONV_LAYERS: (512, 512, 512, 512, 512, 512, 512, 512)
+    FEATURE_EXTRACTOR: KeypointRCNNFeatureExtractor
+    MLP_HEAD_DIM: 1024
+    NUM_CLASSES: 17
+    POOLER_RESOLUTION: 14
+    POOLER_SAMPLING_RATIO: 0
+    POOLER_SCALES: (0.0625,)
+    PREDICTOR: KeypointRCNNPredictor
+    RESOLUTION: 14
+    SHARE_BOX_FEATURE_EXTRACTOR: True
+  ROI_MASK_HEAD:
+    CONV_LAYERS: (256, 256, 256, 256)
+    DILATION: 1
+    FEATURE_EXTRACTOR: ResNet50Conv5ROIFeatureExtractor
+    MLP_HEAD_DIM: 1024
+    POOLER_RESOLUTION: 14
+    POOLER_SAMPLING_RATIO: 0
+    POOLER_SCALES: (0.0625,)
+    POSTPROCESS_MASKS: False
+    POSTPROCESS_MASKS_THRESHOLD: 0.5
+    PREDICTOR: MaskRCNNC4Predictor
+    RESOLUTION: 14
+    SHARE_BOX_FEATURE_EXTRACTOR: True
+    USE_GN: False
+  RPN:
+    ANCHOR_SIZES: (32, 64, 128, 256, 512)
+    ANCHOR_STRIDE: (16,)
+    ASPECT_RATIOS: (0.5, 1.0, 2.0)
+    BATCH_SIZE_PER_IMAGE: 256
+    BBS_FREEZE: False
+    BG_IOU_THRESHOLD: 0.3
+    CLS_FREEZE: False
+    CONV_FREEZE: False
+    EXTERNAL_PROPOSAL: False
+    FG_IOU_THRESHOLD: 0.7
+    FPN_POST_NMS_PER_BATCH: True
+    FPN_POST_NMS_TOP_N_TEST: 2000
+    FPN_POST_NMS_TOP_N_TRAIN: 2000
+    MIN_SIZE: 0
+    NMS_THRESH: 0.7
+    POSITIVE_FRACTION: 0.5
+    POST_NMS_TOP_N_TEST: 1000
+    POST_NMS_TOP_N_TRAIN: 2000
+    PRE_NMS_TOP_N_TEST: 6000
+    PRE_NMS_TOP_N_TRAIN: 12000
+    RPN_HEAD: SingleConvRPNHead
+    STRADDLE_THRESH: 0
+    USE_FPN: False
+  RPN_ONLY: False
+  SOURCE_WEIGHT: 
+  WEIGHT: 
+OUTPUT_DIR: ./output
+PATHS_CATALOG: /home/cgz/XWJ/CL/MMA-main/maskrcnn_benchmark/config/paths_catalog.py
+SOLVER:
+  BASE_LR: 0.001
+  BIAS_LR_FACTOR: 2
+  CHECKPOINT_PERIOD: 2500
+  GAMMA: 0.1
+  IMS_PER_BATCH: 16
+  MAX_ITER: 40000
+  MOMENTUM: 0.9
+  STEPS: (30000,)
+  WARMUP_FACTOR: 0.3333333333333333
+  WARMUP_ITERS: 500
+  WARMUP_METHOD: linear
+  WEIGHT_DECAY: 0.0005
+  WEIGHT_DECAY_BIAS: 0
+TENSORBOARD_DIR: ./tensorboardx
+TEST:
+  COCO_ALPHABETICAL_ORDER: False
+  DETECTIONS_PER_IMG: 100
+  EXPECTED_RESULTS: []
+  EXPECTED_RESULTS_SIGMA_TOL: 4
+  IMS_PER_BATCH: 8
+2022-11-22 09:46:48,567 maskrcnn_benchmark.utils.checkpoint INFO: No checkpoint found. Initializing model from scratch
+2022-11-22 09:46:48,568 maskrcnn_benchmark.data.build WARNING: When using more than one image per GPU you may encounter an out-of-memory (OOM) error if your GPU does not have sufficient memory. If this happens, you can reduce SOLVER.IMS_PER_BATCH (for training) or TEST.IMS_PER_BATCH (for inference). For training, you must also adjust the learning rate and schedule length according to the linear scaling rule. See for example: https://github.com/facebookresearch/Detectron/blob/master/configs/getting_started/tutorial_1gpu_e2e_faster_rcnn_R-50-FPN.yaml#L14

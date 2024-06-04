@@ -1,0 +1,55 @@
+MODEL:
+  META_ARCHITECTURE: "GeneralizedRCNN"
+
+  ####step2
+  WEIGHT: "/media/cgz/新加卷/XWJ/FPC11/source_model/0-3/model_3000.pth"
+  SOURCE_WEIGHT: "/media/cgz/新加卷/XWJ/FPC11/source_model/0-3/model_3000.pth"
+  FTN: "/media/cgz/新加卷/XWJ/FPC11/source_model/0-3/model_3000.pth"
+  CTN: "/media/cgz/新加卷/XWJ/FPC11/source_model/4-11/model_5500.pth"
+
+  BACKBONE:
+    CONV_BODY: "R-50-C4"
+  RESNETS:
+    BACKBONE_OUT_CHANNELS: 1024
+  RPN:
+    USE_FPN: False
+    ANCHOR_STRIDE: (16,)
+    PRE_NMS_TOP_N_TRAIN: 12000
+    PRE_NMS_TOP_N_TEST: 6000
+    POST_NMS_TOP_N_TRAIN: 2000
+    POST_NMS_TOP_N_TEST: 1000
+  ROI_HEADS:
+    USE_FPN: False
+  ROI_BOX_HEAD:
+    POOLER_RESOLUTION: 7
+    POOLER_SCALES: (0.0625,)
+    POOLER_SAMPLING_RATIO: 0
+    FEATURE_EXTRACTOR: "ResNet50Conv5ROIFeatureExtractor"
+    PREDICTOR: "FastRCNNPredictor"
+    #STEP2
+    NUM_CLASSES: 12 # total classes : 20 + 1
+    NAME_OLD_CLASSES: ["Z1", "Z2", "Z3",]
+    NAME_NEW_CLASSES: ["Z4","C3","C4","F1","F2","F3","J1","J3"]
+    NAME_EXCLUDED_CLASSES: [ ]
+DATASETS:
+  TRAIN: ("defect_train",)
+  TEST: ("defect_test",)
+DATALOADER:
+  SIZE_DIVISIBILITY: 0
+SOLVER:
+  BASE_LR: 0.0004 # start learning rate
+
+  WEIGHT_DECAY: 0.0001
+  GAMMA: 0.1  # learning rate decay
+  STEPS: (7500,)
+  MAX_ITER: 10000 #2500  # number of iteration
+  CHECKPOINT_PERIOD: 500  # number of iteration to generate check point
+  IMS_PER_BATCH: 4 # number of images per batch
+  MOMENTUM: 0.9
+TEST: # testing strategy
+  IMS_PER_BATCH: 4 # number of images per batch
+
+#NAME: 10-10_LR005_BS4_ROI
+OUTPUT_DIR: "/media/cgz/新加卷/XWJ/FPC11/3-8/2teacher/ADT-ILDFD" # path to store the result
+TENSORBOARD_DIR: "output/" # path to store tensorboard info
+#DTYPE: "float16"#

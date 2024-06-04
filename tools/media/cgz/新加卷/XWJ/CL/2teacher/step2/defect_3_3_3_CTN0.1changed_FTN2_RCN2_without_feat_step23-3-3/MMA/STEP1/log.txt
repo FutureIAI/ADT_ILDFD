@@ -1,0 +1,4 @@
+2023-02-27 09:44:25,421 maskrcnn_benchmark_target_model INFO: local rank: 0
+2023-02-27 09:44:25,421 maskrcnn_benchmark_target_model INFO: Using 1 GPUs
+2023-02-27 09:44:26,915 maskrcnn_benchmark_target_model INFO: Loading checkpoint from /media/cgz/新加卷/XWJ/CL/MMA/defect_3_3_3_with2teacher/model_8000.pth
+2023-02-27 09:44:30,709 maskrcnn_benchmark_target_model.trainer INFO: Start training

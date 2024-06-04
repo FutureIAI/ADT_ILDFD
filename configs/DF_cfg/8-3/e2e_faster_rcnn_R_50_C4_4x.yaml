@@ -1,0 +1,48 @@
+MODEL:
+  META_ARCHITECTURE: "GeneralizedRCNN"
+  WEIGHT: "catalog://ImageNetPretrained/MSRA/R-50"
+  BACKBONE:
+    CONV_BODY: "R-50-C4"
+  RESNETS:
+    BACKBONE_OUT_CHANNELS: 1024
+  RPN:
+    USE_FPN: False
+    ANCHOR_STRIDE: (16,)
+    PRE_NMS_TOP_N_TRAIN: 12000
+    PRE_NMS_TOP_N_TEST: 6000
+    POST_NMS_TOP_N_TRAIN: 2000
+    POST_NMS_TOP_N_TEST: 1000
+    EXTERNAL_PROPOSAL: False
+  ROI_HEADS:
+    USE_FPN: False
+  ROI_BOX_HEAD:
+    POOLER_RESOLUTION: 7
+    POOLER_SCALES: (0.0625,)
+    POOLER_SAMPLING_RATIO: 2
+    FEATURE_EXTRACTOR: "ResNet50Conv5ROIFeatureExtractor"
+    PREDICTOR: "FastRCNNPredictor"
+    NUM_CLASSES: 9 # total classes : 8 + 1
+    NAME_OLD_CLASSES: []
+    NAME_NEW_CLASSES: ["Z1", "Z2", "Z3","Z4","C3","C4","F1","F2",]
+    NAME_EXCLUDED_CLASSES: ["F3","J1","J3"]
+DATASETS:
+  TRAIN: ("defect_train",)
+  TEST: ("defect_test",)
+DATALOADER:
+  SIZE_DIVISIBILITY: 32
+SOLVER:
+  BASE_LR: 0.005 # start learning rate
+  WEIGHT_DECAY: 0.0001
+  GAMMA: 0.1  # learning rate decay
+  STEPS: (7500,)
+  MAX_ITER: 5000 # number of iteration
+  CHECKPOINT_PERIOD: 500 # number of iteration to generate check point
+  IMS_PER_BATCH: 4 # number of images per batch
+  MOMENTUM: 0.9
+TEST: # testing strategy
+  IMS_PER_BATCH: 4 # number of images per batch
+
+OUTPUT_DIR: "/media/cgz/新加卷/XWJ/FPC11/source_model/0-8" # path to store the result
+TENSORBOARD_DIR: "" # path to store tensorboard info
+#DTYPE: "float16"
+INCREMENTAL: False

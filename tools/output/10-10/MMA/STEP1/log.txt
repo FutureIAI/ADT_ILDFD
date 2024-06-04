@@ -1,0 +1,4 @@
+2022-11-18 09:47:49,258 maskrcnn_benchmark_target_model INFO: local rank: 0
+2022-11-18 09:47:49,258 maskrcnn_benchmark_target_model INFO: Using 1 GPUs
+2022-11-18 10:23:09,673 maskrcnn_benchmark_target_model INFO: local rank: 0
+2022-11-18 10:23:09,673 maskrcnn_benchmark_target_model INFO: Using 1 GPUs
